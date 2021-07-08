@@ -51,49 +51,17 @@ app.post("/scream", (req, res) => {
     });
 });
 
-/*
-How to fetch collections w/out Express.
-exports.getScreams = functions.https.onRequest((request, response) => {
-  admin
-    .firestore()
-    .collection("screams")
-    .get()
-    .then((data) => {
-      let screams = [];
-      data.forEach((doc) => {
-        screams.push(doc.data());
-      });
-      return response.json(screams);
-    })
-    .catch((err) => {
-      console.error(err);
-    });
-});
+const isEmail = (email) => {
+  const emailRegEx =
+    /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+  if (email.match(email)) return true;
+  else return false;
+};
 
-Create new item in collection, in this case a new scream w/out Express.
-exports.createScream = functions.https.onRequest((req, res) => {
-  if (req.method != "POST") {
-    return res.status(400).json({ error: "method not allowed" });
-  }
-  const newScream = {
-    body: req.body.body,
-    userHandle: req.body.userHandle,
-    createdAt: admin.firestore.Timestamp.fromDate(new Date()),
-  };
-
-  admin
-    .firestore()
-    .collection("screams")
-    .add(newScream)
-    .then((doc) => {
-      res.json({ message: `document ${doc.id} created successfully` });
-    })
-    .catch((err) => {
-      res.status(500).json({ error: "something went wrong" });
-      console.error(err);
-    });
-});
-*/
+const isEmpty = (string) => {
+  if (string.trim() == "") return true;
+  else return false;
+};
 
 // Signup Route
 app.post("/signup", (req, res) => {
@@ -103,7 +71,28 @@ app.post("/signup", (req, res) => {
     confirmPassword: req.body.confirmPassword,
     handle: req.body.handle,
   };
-  //todo: validate data.
+
+  //Data validation
+  let errors = {};
+
+  //Email validation
+  if (isEmpty(newUser.email)) {
+    errors.email = "Must not be empty";
+  } else if (!isEmail(newUser.email)) {
+    errors.email = "Must be a valid email address";
+  }
+
+  //Password validation
+  if (isEmpty(newUser.password)) errors.password = "Must not be empty";
+  if (newUser.password !== newUser.confirmPassword)
+    errors.confirmPassword = "Passwords must match";
+
+  // Handle validation
+  if (isEmpty(newUser.handle)) errors.handle = "Must not be empty";
+
+  // Error object check
+  if (Object.keys(errors).length > 0) return res.status(400).json(errors);
+
   let token, userId;
   db.doc(`/users/${newUser.handle}`)
     .get()
@@ -137,6 +126,40 @@ app.post("/signup", (req, res) => {
       console.error(err);
       if (err.code === "auth/email-already-in-use") {
         return res.status(400).json({ email: "Email is already in use" });
+      } else {
+        return res.status(500).json({ error: err.code });
+      }
+    });
+});
+
+app.post("/login", (req, res) => {
+  const user = {
+    email: req.body.email,
+    password: req.body.password,
+  };
+
+  let errors = {};
+
+  if (isEmpty(user.email)) errors.email = "Must not be empty";
+  if (isEmpty(user.password)) errors.password = "Must not be empty";
+
+  if (Object.keys(errors).length > 0) return res.status(400).json(errors);
+
+  firebase
+    .auth()
+    .signInWithEmailAndPassword(user.email, user.password)
+    .then((data) => {
+      return data.user.getIdToken();
+    })
+    .then((token) => {
+      return res.json({ token });
+    })
+    .catch((err) => {
+      console.error(err);
+      if (err.code === "auth/wrong-password") {
+        return res
+          .status(403)
+          .json({ general: "Wrong Credentials, please try again" });
       } else {
         return res.status(500).json({ error: err.code });
       }
